@@ -107,6 +107,13 @@ class Trainer(object):
         best_loss = np.inf
         best_mr = 256
 
+        filename = os.path.join(self.params.save_dir, 'resnet101_motivation_params.pkl')
+        try:
+            self.model.load_state_dict(torch.load(filename))
+            print("Model exists.")
+        except:
+            print("No model exists.")
+
         self.model.train()
         for epoch in range(self.params.max_epoch):
 
@@ -115,14 +122,15 @@ class Trainer(object):
             logger.info('Start training epoch {}'.format(self.last_epoch))
 
             # train & test for a epoch
-            train_acc, train_loss = self._train_one_epoch()
-            val_acc, val_loss, val_mr = self._val_one_epoch()
+            train_loss, train_acc = self._train_one_epoch()
+            val_loss, val_acc, val_mr = self._val_one_epoch()
 
             # save model
             if best_mr > val_mr:
                 best_mr = val_mr
                 best_epoch = epoch + 1
-                torch.save(self.model.state_dict(), 'resnet101_cocom_params.pkl')
+                filename = os.path.join(self.params.save_dir, 'resnet101_motivation_params.pkl')
+                torch.save(self.model.state_dict(), filename)
             # if (self.last_epoch % self.params.save_freq_epoch == 0) or (self.last_epoch == self.params.max_epoch - 1):
             #     save_name = os.path.join(self.params.save_dir, 'ckpt_epoch_{}.pth'.format(self.last_epoch))
             #     t.save(self.model.state_dict(), save_name)
@@ -225,8 +233,6 @@ class Trainer(object):
         test_loss = loss_meter.mean
         cm_value = confusion_matrix.value()
         test_acc = 100. * np.trace(cm_value) / (cm_value.sum())
-
-        print(gt_rank)
 
         test_mr = np.median(np.array(gt_rank).reshape(-1))
 
