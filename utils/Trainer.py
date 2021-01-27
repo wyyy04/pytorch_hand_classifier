@@ -2,13 +2,13 @@ from __future__ import print_function
 
 import os
 import numpy as np
-
 import torch as t
 import torch.nn as nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.autograd import Variable
 from torchnet import meter
 import torch
+import time
 
 from .log import logger
 # from .visualize import Visualizer
@@ -21,6 +21,10 @@ def get_learning_rates(optimizer):
 
 
 class TrainParams(object):
+    '''
+    Params of the model
+    '''
+
     # required params
     max_epoch = 30
 
@@ -92,7 +96,15 @@ class Trainer(object):
     def train(self):
         # vis = Visualizer()
         best_loss = np.inf
-        for epoch in range(self.last_epoch, self.params.max_epoch):
+        for epoch in range(self.params.max_epoch):
+
+            epoch_start = time.time()
+            train_loss = 0.0
+            train_acc = 0.0
+            test_loss = 0.0
+            test_acc = 0.0
+            res = np.zeros((len(self.val_data), 256))
+            print("len:",len(self.val_data))
 
             self.loss_meter.reset()
             self.confusion_matrix.reset()
@@ -116,9 +128,17 @@ class Trainer(object):
             # visualize
             # vis.plot('loss', self.loss_meter.value()[0])
             # vis.plot('val_accuracy', val_accuracy)
-            logger.info("epoch:{epoch},lr:{lr},loss:{loss},train_cm:{train_cm},val_cm:{val_cm}".format(
-                epoch=epoch, loss=self.loss_meter.value()[0], val_cm=str(val_cm.value()),
-                train_cm=str(self.confusion_matrix.value()), lr=get_learning_rates(self.optimizer)))
+            # vis.log("epoch:{epoch},lr:{lr},loss:{loss},train_cm:{train_cm},val_cm:{val_cm}".format(
+            #     epoch=epoch, loss=self.loss_meter.value()[0], val_cm=str(val_cm.value()),
+            #     train_cm=str(self.confusion_matrix.value()), lr=get_learning_rates(self.optimizer)))
+            epoch_end = time.time()
+            logger.info("Epoch:{epoch},lr:{lr}".format(epoch=epoch, lr=get_learning_rates(self.optimizer)))
+            print(
+                "\tTraining: Loss: {:.4f}, Accuracy: {:.4f}%, \nValidation: Loss: {:.4f}, Accuracy: {:.4f}%, Median Rank: {} \nTime: {:.4f}s".format(
+                    avg_test_loss, avg_train_acc * 100, avg_test_loss, avg_test_acc * 100, mean_rank,
+                    epoch_end - epoch_start
+                ))
+            print("Best median rank for test : {:.4f} at epoch {:03d}".format(best_mr, best_epoch))
 
             # adjust the lr
             if isinstance(self.lr_scheduler, ReduceLROnPlateau):
