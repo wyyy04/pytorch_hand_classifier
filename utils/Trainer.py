@@ -8,9 +8,10 @@ import torch.nn as nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.autograd import Variable
 from torchnet import meter
+import torch
 
 from .log import logger
-from .visualize import Visualizer
+# from .visualize import Visualizer
 
 
 def get_learning_rates(optimizer):
@@ -75,7 +76,7 @@ class Trainer(object):
 
         # meters
         self.loss_meter = meter.AverageValueMeter()
-        self.confusion_matrix = meter.ConfusionMeter(6)
+        self.confusion_matrix = meter.ConfusionMeter(256)
 
         # set CUDA_VISIBLE_DEVICES
         if len(self.params.gpus) > 0:
@@ -89,7 +90,7 @@ class Trainer(object):
         self.model.train()
 
     def train(self):
-        vis = Visualizer()
+        # vis = Visualizer()
         best_loss = np.inf
         for epoch in range(self.last_epoch, self.params.max_epoch):
 
@@ -103,7 +104,7 @@ class Trainer(object):
 
             # save model
             if (self.last_epoch % self.params.save_freq_epoch == 0) or (self.last_epoch == self.params.max_epoch - 1):
-                save_name = self.params.save_dir + 'ckpt_epoch_{}.pth'.format(self.last_epoch)
+                save_name = os.path.join(self.params.save_dir, 'ckpt_epoch_{}.pth'.format(self.last_epoch))
                 t.save(self.model.state_dict(), save_name)
 
             val_cm, val_accuracy = self._val_one_epoch()
@@ -113,9 +114,9 @@ class Trainer(object):
                 best_loss = self.loss_meter.value()[0]
 
             # visualize
-            vis.plot('loss', self.loss_meter.value()[0])
-            vis.plot('val_accuracy', val_accuracy)
-            vis.log("epoch:{epoch},lr:{lr},loss:{loss},train_cm:{train_cm},val_cm:{val_cm}".format(
+            # vis.plot('loss', self.loss_meter.value()[0])
+            # vis.plot('val_accuracy', val_accuracy)
+            logger.info("epoch:{epoch},lr:{lr},loss:{loss},train_cm:{train_cm},val_cm:{val_cm}".format(
                 epoch=epoch, loss=self.loss_meter.value()[0], val_cm=str(val_cm.value()),
                 train_cm=str(self.confusion_matrix.value()), lr=get_learning_rates(self.optimizer)))
 
@@ -145,29 +146,33 @@ class Trainer(object):
             self.optimizer.step(None)
 
             # meters update
-            self.loss_meter.add(loss.data[0])
+            self.loss_meter.add(loss.data)
+            # print(score.data,target.data)
             self.confusion_matrix.add(score.data, target.data)
+
+            if step > 5: break
 
     def _val_one_epoch(self):
         self.model.eval()
-        confusion_matrix = meter.ConfusionMeter(6)
+        confusion_matrix = meter.ConfusionMeter(256)
         logger.info('Val on validation set...')
 
         for step, (data, label) in enumerate(self.val_data):
-
+            if step>10 :break
             # val model
-            inputs = Variable(data, volatile=True)
-            target = Variable(label.type(t.LongTensor), volatile=True)
+            with torch.no_grad():
+                inputs = Variable(data)
+                target = Variable(label)
             if len(self.params.gpus) > 0:
                 inputs = inputs.cuda()
                 target = target.cuda()
 
             score = self.model(inputs)
-            confusion_matrix.add(score.data.squeeze(), label.type(t.LongTensor))
+            confusion_matrix.add(score.data.squeeze(), target.data)
+            # confusion_matrix.add(score.data.squeeze(), label.type(t.LongTensor))
 
         self.model.train()
         cm_value = confusion_matrix.value()
-        accuracy = 100. * (cm_value[0][0] + cm_value[1][1]
-                           + cm_value[2][2] + cm_value[3][3]
-                           + cm_value[4][4] + cm_value[5][5]) / (cm_value.sum())
+
+        accuracy = 100. * np.trace(cm_value) / (cm_value.sum())
         return confusion_matrix, accuracy
